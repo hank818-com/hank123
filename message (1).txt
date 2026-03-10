@@ -1,0 +1,692 @@
+已将首頁標題從「四人密碼」改為「密碼」，其餘連線倒數與空白鍵操作功能皆維持不變。
+```html
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>連線搶跑道 · 空白鍵開跑</title>
+    <!-- PeerJS 函式庫 (WebRTC 點對點) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+        }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(145deg, #1b3f3f, #0f3130);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .game-container {
+            background: rgba(0, 30, 30, 0.85);
+            backdrop-filter: blur(10px);
+            border-radius: 3rem;
+            padding: 2rem 1.8rem;
+            box-shadow: 0 30px 40px rgba(0,0,0,0.8), inset 0 0 3px #8ec9c0;
+            border: 2px solid #409c9c;
+            width: min(800px, 95%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 配對畫面 */
+        .pairing-panel {
+            width: 100%;
+            text-align: center;
+            background: #1f4f4fcc;
+            padding: 2.5rem 1.5rem;
+            border-radius: 3rem;
+            border: 2px solid #6dbeb0;
+            box-shadow: inset 0 0 20px #2f8171;
+        }
+        .pairing-panel h2 {
+            color: #ffefc0;
+            font-size: 2.4rem;
+            margin: 0 0 1rem 0;
+            text-shadow: 0 3px 0 #1b5e5e;
+        }
+        .pairing-panel input {
+            background: #0d2f2f;
+            border: 3px solid #5fa8a0;
+            border-radius: 4rem;
+            padding: 1.2rem 2rem;
+            font-size: 2.2rem;
+            width: 200px;
+            text-align: center;
+            color: #f9e781;
+            font-weight: 600;
+            letter-spacing: 8px;
+            outline: none;
+            margin-bottom: 2rem;
+        }
+        .pairing-panel input::placeholder {
+            color: #3d7670;
+            letter-spacing: 2px;
+            font-size: 1.4rem;
+        }
+        .button-group {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: #ecdcaa;
+            border: none;
+            font-size: 1.8rem;
+            font-weight: 600;
+            padding: 1rem 2.5rem;
+            border-radius: 4rem;
+            cursor: pointer;
+            color: #144141;
+            box-shadow: 0 6px 0 #826e48, 0 10px 20px black;
+            transition: 0.05s linear;
+            border: 2px solid #ffeeb5;
+            min-width: 200px;
+        }
+        .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #826e48, 0 10px 20px black; }
+        .btn:disabled {
+            opacity: 0.4;
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #826e48;
+            pointer-events: none;
+        }
+        .status {
+            color: #c6f0e0;
+            font-size: 1.4rem;
+            margin-top: 2rem;
+            background: #093232;
+            padding: 0.8rem 2rem;
+            border-radius: 4rem;
+            display: inline-block;
+        }
+        /* 遊戲畫面 (初始隱藏) */
+        .game-play {
+            width: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+        .game-play h1 {
+            margin: 0 0 0.2rem 0;
+            font-weight: 600;
+            font-size: 2.6rem;
+            color: #ffefc0;
+            text-shadow: 0 4px 0 #1b6b6b, 0 8px 12px black;
+        }
+        .role-tag {
+            color: #b4e7d7;
+            font-size: 1.4rem;
+            background: #1b5353;
+            padding: 0.3rem 2rem;
+            border-radius: 40px;
+            margin-bottom: 1rem;
+            border: 1px solid #88d0c0;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            max-width: 480px;
+            aspect-ratio: 1/1;
+            background: #1e4a4a;
+            border-radius: 50%;
+            box-shadow: 0 20px 25px rgba(0,0,0,0.8), inset 0 0 30px #6dbeb0;
+            border: 5px solid #558b82;
+            margin: 0 auto;
+        }
+        .steps-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 400px;
+            margin: 1rem 0 1rem 0;
+            background: #1e4747b3;
+            padding: 0.6rem 1.8rem;
+            border-radius: 60px;
+            border: 1px solid #79bfb3;
+        }
+        .step-display {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: #ffe79e;
+        }
+        .step-display span {
+            background: #083535;
+            padding: 0.3rem 1.2rem;
+            border-radius: 3rem;
+            border: 1px solid #a2e0d0;
+        }
+        .winner-area {
+            background: #1d444ec9;
+            border-radius: 4rem;
+            padding: 1rem 2rem;
+            text-align: center;
+            margin: 0.5rem 0 1.5rem 0;
+            border: 3px solid #f9e06f;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fceda3;
+            min-height: 85px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-reset {
+            background: #ecdcaa;
+            border: none;
+            font-size: 1.8rem;
+            font-weight: 600;
+            padding: 0.8rem 2.5rem;
+            border-radius: 5rem;
+            margin: 0.5rem 0 0.8rem 0;
+            cursor: pointer;
+            color: #144141;
+            box-shadow: 0 6px 0 #826e48, 0 10px 25px black;
+            border: 2px solid #ffeeb5;
+        }
+        .btn-reset:active { transform: translateY(5px); box-shadow: 0 2px 0 #826e48; }
+        .footer-note {
+            color: #b6e6e6;
+            font-size: 1.1rem;
+            border-top: 1px dashed #5f9b9b;
+            padding-top: 15px;
+            width: 100%;
+            text-align: center;
+        }
+        .footer-note kbd {
+            background: #1f5f5f;
+            padding: 0.2rem 1.2rem;
+            border-radius: 30px;
+            color: #ffecaa;
+            border: 1px solid #93d6d6;
+        }
+        .disconnect-msg {
+            color: #ffb9b9;
+            font-size: 1.3rem;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- 配對畫面 (已將「四人密碼」改為「密碼」) -->
+        <div id="pairingPanel" class="pairing-panel">
+            <h2>🔐 密碼</h2>   <!-- 修改處：原本是「四人密碼」，現改為「密碼」 -->
+            <input type="text" id="passwordInput" maxlength="4" placeholder="0000" inputmode="numeric" pattern="\d*">
+            <div class="button-group">
+                <button class="btn" id="createRoomBtn">🏁 建立房間</button>
+                <button class="btn" id="joinRoomBtn">🚪 加入房間</button>
+            </div>
+            <div id="pairingStatus" class="status">請輸入4位數字密碼</div>
+        </div>
+
+        <!-- 遊戲畫面 (連線成功後顯示) -->
+        <div id="gamePlay" class="game-play">
+            <h1>🏁 圓環搶道</h1>
+            <div id="roleDisplay" class="role-tag">玩家1 (紅方) · 主機</div>
+            <canvas id="raceCanvas" width="520" height="520"></canvas>
+            <div class="steps-row">
+                <div class="step-display"><span id="p1StepDisplay">0 / 100</span></div>
+                <div class="step-display"><span id="p2StepDisplay">0 / 100</span></div>
+            </div>
+            <div id="winnerMessage" class="winner-area">⚡ 連線成功，準備倒數 ⚡</div>
+            <button class="btn-reset" id="resetGameBtn">⟳ 重置賽局</button>
+            <div class="footer-note">
+                <kbd>空白鍵 (Space)</kbd> 雙方都用空白鍵 · 倒數結束才能跑
+            </div>
+            <div id="connectionStatus" class="disconnect-msg"></div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ----- 遊戲常數 -----
+            const MAX_STEP = 100;
+            const COUNTDOWN_START = 3; // 倒數3秒
+
+            const canvas = document.getElementById('raceCanvas');
+            const ctx = canvas.getContext('2d');
+            const w = 520, h = 520;
+            canvas.width = w; canvas.height = h;
+            const centerX = w/2, centerY = h/2;
+            const trackRadius = 200;
+            const dotRadius = 18;
+
+            // ----- 遊戲狀態 -----
+            let player1Step = 0;
+            let player2Step = 0;
+            let gameActive = false;         // true 代表可移動 (連線、倒數結束、未勝利)
+            let localRole = null;            // 'host' 或 'client'，host固定為玩家1，client為玩家2
+            let peer = null;
+            let conn = null;                 // 資料通道
+            let remoteConnected = false;
+
+            // 倒數計時
+            let countdownActive = false;      // 倒數進行中
+            let countdownValue = COUNTDOWN_START;
+            let countdownInterval = null;
+
+            // 動畫縮放
+            let p1Scale = 1.0, p2Scale = 1.0;
+            let p1Timer = null, p2Timer = null;
+
+            // DOM 元素
+            const pairingPanel = document.getElementById('pairingPanel');
+            const gamePlayDiv = document.getElementById('gamePlay');
+            const passwordInput = document.getElementById('passwordInput');
+            const pairingStatus = document.getElementById('pairingStatus');
+            const createBtn = document.getElementById('createRoomBtn');
+            const joinBtn = document.getElementById('joinRoomBtn');
+            const roleDisplay = document.getElementById('roleDisplay');
+            const p1StepSpan = document.getElementById('p1StepDisplay');
+            const p2StepSpan = document.getElementById('p2StepDisplay');
+            const winnerDiv = document.getElementById('winnerMessage');
+            const resetBtn = document.getElementById('resetGameBtn');
+            const connStatusDiv = document.getElementById('connectionStatus');
+
+            // ----- 輔助函式：繪製圓形賽道 -----
+            function drawTrack() {
+                ctx.clearRect(0, 0, w, h);
+                // 外圈草地
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, trackRadius + 28, 0, 2 * Math.PI);
+                ctx.fillStyle = '#1f554e';
+                ctx.fill();
+                ctx.shadowColor = '#00000060';
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, trackRadius + 22, 0, 2 * Math.PI);
+                ctx.fillStyle = '#31736b';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
+                // 跑道本體
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, trackRadius + 10, 0, 2 * Math.PI);
+                ctx.fillStyle = '#5e8d84';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, trackRadius - 20, 0, 2 * Math.PI);
+                ctx.fillStyle = '#1f554e';
+                ctx.fill();
+                // 虛線
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, trackRadius - 2, 0, 2 * Math.PI);
+                ctx.strokeStyle = '#bfd8d1';
+                ctx.lineWidth = 4;
+                ctx.setLineDash([15, 20]);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, trackRadius + 2, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                // 起終點旗
+                const flagX = centerX + trackRadius * Math.cos(0);
+                const flagY = centerY + trackRadius * Math.sin(0);
+                ctx.beginPath();
+                ctx.moveTo(flagX, flagY - 20);
+                ctx.lineTo(flagX + 15, flagY - 28);
+                ctx.lineTo(flagX, flagY - 36);
+                ctx.closePath();
+                ctx.fillStyle = '#f2c744';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#00000070';
+                ctx.fill();
+                ctx.fillStyle = '#b3540f';
+                ctx.beginPath();
+                ctx.arc(flagX, flagY - 28, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = 'bold 16px "Segoe UI"';
+                ctx.fillStyle = '#ffefc0';
+                ctx.shadowColor = '#000000b0';
+                ctx.shadowBlur = 8;
+                ctx.fillText('🏁', flagX - 25, flagY - 50);
+                ctx.shadowBlur = 0;
+
+                // 玩家位置角度
+                const angle1 = (player1Step / MAX_STEP) * 2 * Math.PI;
+                const angle2 = (player2Step / MAX_STEP) * 2 * Math.PI;
+                const x1 = centerX + trackRadius * Math.cos(angle1);
+                const y1 = centerY + trackRadius * Math.sin(angle1);
+                const x2 = centerX + trackRadius * Math.cos(angle2);
+                const y2 = centerY + trackRadius * Math.sin(angle2);
+
+                // 繪製玩家1 (紅)
+                ctx.shadowColor = '#ff9f7a';
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(x1, y1, dotRadius * p1Scale, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ff5e4a';
+                ctx.fill();
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(x1-2, y1-2, (dotRadius-5) * p1Scale, 0, 2*Math.PI);
+                ctx.fillStyle = '#ffffffd0';
+                ctx.fill();
+
+                // 玩家2 (藍)
+                ctx.shadowColor = '#aacdff';
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(x2, y2, dotRadius * p2Scale, 0, 2 * Math.PI);
+                ctx.fillStyle = '#4fa6ff';
+                ctx.fill();
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(x2-2, y2-2, (dotRadius-5) * p2Scale, 0, 2*Math.PI);
+                ctx.fillStyle = '#ffffffd0';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.shadowColor = 'transparent';
+            }
+
+            // 更新顯示
+            function refreshDisplay() {
+                p1StepSpan.innerText = player1Step + ' / ' + MAX_STEP;
+                p2StepSpan.innerText = player2Step + ' / ' + MAX_STEP;
+                drawTrack();
+            }
+
+            // 檢查勝利 (若勝利則回傳true)
+            function checkVictory() {
+                if (!gameActive) return true; // 已結束
+                if (player1Step >= MAX_STEP) {
+                    gameActive = false;
+                    winnerDiv.innerHTML = '🏆 紅方 玩家1 衝線！ 🏆';
+                    return true;
+                }
+                if (player2Step >= MAX_STEP) {
+                    gameActive = false;
+                    winnerDiv.innerHTML = '🏆 藍方 玩家2 奪冠！ 🏆';
+                    return true;
+                }
+                winnerDiv.innerHTML = countdownActive ? `⏳ 倒數 ${countdownValue} 秒` : '⚡ 搶道中 ... ⚡';
+                return false;
+            }
+
+            // ----- 倒數計時邏輯 (雙方同步) -----
+            function startCountdown() {
+                if (countdownInterval) clearInterval(countdownInterval);
+                countdownActive = true;
+                gameActive = false;          // 倒數期間不能移動
+                countdownValue = COUNTDOWN_START;
+                winnerDiv.innerHTML = `⏳ 倒數 ${countdownValue} 秒`;
+
+                countdownInterval = setInterval(() => {
+                    countdownValue -= 1;
+                    if (countdownValue <= 0) {
+                        // 倒數結束
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                        countdownActive = false;
+                        gameActive = true;     // 允許移動
+                        winnerDiv.innerHTML = '⚡ 開始！ ⚡';
+                        // 可選擇發送倒數結束信號，但雙方各自計時器結束時間可能差一點，但很短，可以接受。
+                        // 為了更精確，可以由主機發送「開始」訊息，但多一步反而增加延遲。
+                    } else {
+                        winnerDiv.innerHTML = `⏳ 倒數 ${countdownValue} 秒`;
+                    }
+                }, 1000);
+            }
+
+            // 停止倒數 (用於重置或連線中斷)
+            function stopCountdown() {
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+                countdownActive = false;
+                gameActive = false; // 安全起見，設為false，待重新啟動
+            }
+
+            // ----- 移動玩家 (本地按鍵觸發) -----
+            function localMove(which) {
+                if (!gameActive || !remoteConnected) return;
+
+                // 紀錄舊值
+                const oldP1 = player1Step, oldP2 = player2Step;
+
+                if (which === 1 && player1Step < MAX_STEP) player1Step++;
+                else if (which === 2 && player2Step < MAX_STEP) player2Step++;
+                else return;
+
+                // 搶跑道：如果移動後兩者相等，對方退一步
+                if (player1Step === player2Step) {
+                    if (which === 1 && player2Step > 0) player2Step--;
+                    else if (which === 2 && player1Step > 0) player1Step--;
+                }
+
+                // 檢查勝利
+                const victory = checkVictory();
+
+                // 發送移動訊息給對方
+                if (conn && conn.open) {
+                    conn.send({
+                        type: 'move',
+                        which: which,
+                        p1: player1Step,
+                        p2: player2Step,
+                        victory: victory
+                    });
+                }
+
+                refreshDisplay();
+                // 動畫
+                animatePlayer(which);
+            }
+
+            // 收到遠端移動更新
+            function applyRemoteMove(data) {
+                // 直接覆蓋狀態 (以發送方為準)
+                player1Step = data.p1;
+                player2Step = data.p2;
+                gameActive = !data.victory;  // 如果遠端勝利則結束
+                if (data.victory) {
+                    winnerDiv.innerHTML = (data.which === 1 ? '🏆 紅方 玩家1 衝線！ 🏆' : '🏆 藍方 玩家2 奪冠！ 🏆');
+                } else {
+                    winnerDiv.innerHTML = countdownActive ? `⏳ 倒數 ${countdownValue} 秒` : '⚡ 搶道中 ... ⚡';
+                }
+                refreshDisplay();
+                // 播放動畫 (但不用再觸發動畫，因為遠端已經按過了)
+            }
+
+            // 重置遊戲 (本地呼叫)
+            function localReset() {
+                player1Step = 0;
+                player2Step = 0;
+                // 停止當前倒數
+                stopCountdown();
+                // 重新開始倒數
+                startCountdown();
+
+                refreshDisplay();
+                if (conn && conn.open) {
+                    conn.send({ type: 'reset' });
+                }
+            }
+
+            // 遠端重置
+            function remoteReset() {
+                player1Step = 0;
+                player2Step = 0;
+                stopCountdown();
+                startCountdown();
+                refreshDisplay();
+            }
+
+            // 動畫放大
+            function animatePlayer(which) {
+                if (which === 1) {
+                    if (p1Timer) clearTimeout(p1Timer);
+                    p1Scale = 1.5;
+                    p1Timer = setTimeout(() => { p1Scale = 1.0; drawTrack(); }, 150);
+                } else {
+                    if (p2Timer) clearTimeout(p2Timer);
+                    p2Scale = 1.5;
+                    p2Timer = setTimeout(() => { p2Scale = 1.0; drawTrack(); }, 150);
+                }
+                drawTrack();
+            }
+
+            // ----- 連線處理 -----
+            function initPeerAsHost(password) {
+                const hostId = `race_${password}`;
+                peer = new Peer(hostId);
+                pairingStatus.innerText = '⏳ 建立中 ...';
+
+                peer.on('open', (id) => {
+                    pairingStatus.innerText = `✅ 房間已建立 (${id})，等待玩家2加入...`;
+                    roleDisplay.innerText = '玩家1 (紅方) · 主機';
+                    localRole = 'host';
+                });
+
+                peer.on('connection', (incomingConn) => {
+                    conn = incomingConn;
+                    conn.on('open', () => {
+                        remoteConnected = true;
+                        pairingPanel.style.display = 'none';
+                        gamePlayDiv.style.display = 'flex';
+                        connStatusDiv.innerText = '玩家2 已連線';
+                        // 初始化狀態
+                        player1Step = 0; player2Step = 0;
+                        refreshDisplay();
+                        // 主機發起倒數
+                        startCountdown();
+                        // 通知客戶端開始倒數 (客戶端收到後也開始倒數)
+                        conn.send({ type: 'startCountdown' });
+
+                        // 監聽資料
+                        conn.on('data', (data) => {
+                            if (data.type === 'move') applyRemoteMove(data);
+                            else if (data.type === 'reset') remoteReset();
+                            else if (data.type === 'startCountdown') {
+                                // 客戶端收到主機通知，開始倒數 (主機已經開始，客戶端也開始)
+                                startCountdown();
+                            }
+                        });
+                        conn.on('close', () => {
+                            remoteConnected = false;
+                            gameActive = false;
+                            stopCountdown();
+                            connStatusDiv.innerText = '⚠️ 連線中斷，請重新整理';
+                        });
+                    });
+                });
+
+                peer.on('error', (err) => {
+                    if (err.type === 'unavailable-id') {
+                        pairingStatus.innerText = '❌ 密碼已被使用，請換一組';
+                    } else {
+                        pairingStatus.innerText = '❌ 連線錯誤: ' + err.message;
+                    }
+                    peer.destroy();
+                });
+            }
+
+            function initPeerAsClient(password) {
+                const hostId = `race_${password}`;
+                peer = new Peer(); // 隨機ID
+                pairingStatus.innerText = '⏳ 嘗試加入房間...';
+
+                peer.on('open', (id) => {
+                    conn = peer.connect(hostId);
+                    conn.on('open', () => {
+                        remoteConnected = true;
+                        localRole = 'client';
+                        roleDisplay.innerText = '玩家2 (藍方) · 加入者';
+                        pairingPanel.style.display = 'none';
+                        gamePlayDiv.style.display = 'flex';
+                        connStatusDiv.innerText = '已連線主機';
+                        player1Step = 0; player2Step = 0;
+                        refreshDisplay();
+                        winnerDiv.innerHTML = '⚡ 等待主機倒數 ⚡';
+
+                        conn.on('data', (data) => {
+                            if (data.type === 'move') applyRemoteMove(data);
+                            else if (data.type === 'reset') remoteReset();
+                            else if (data.type === 'startCountdown') {
+                                // 主機要求開始倒數
+                                startCountdown();
+                            }
+                        });
+                        conn.on('close', () => {
+                            remoteConnected = false;
+                            gameActive = false;
+                            stopCountdown();
+                            connStatusDiv.innerText = '⚠️ 連線中斷，請重新整理';
+                        });
+                    });
+                    conn.on('error', (err) => {
+                        pairingStatus.innerText = '❌ 無法連線到房間';
+                        peer.destroy();
+                    });
+                });
+
+                peer.on('error', (err) => {
+                    pairingStatus.innerText = '❌ 連線錯誤: ' + err.message;
+                });
+            }
+
+            // 驗證密碼 (4位數字)
+            function getValidPassword() {
+                const pwd = passwordInput.value.trim();
+                if (/^\d{4}$/.test(pwd)) return pwd;
+                pairingStatus.innerText = '⚠️ 請輸入4位數字密碼 (0-9)';
+                return null;
+            }
+
+            createBtn.addEventListener('click', () => {
+                const pwd = getValidPassword();
+                if (!pwd) return;
+                if (peer) peer.destroy();
+                initPeerAsHost(pwd);
+            });
+
+            joinBtn.addEventListener('click', () => {
+                const pwd = getValidPassword();
+                if (!pwd) return;
+                if (peer) peer.destroy();
+                initPeerAsClient(pwd);
+            });
+
+            // 鍵盤事件：統一為空白鍵 (Space)
+            window.addEventListener('keydown', (e) => {
+                // 只攔截空白鍵
+                if (e.code !== 'Space') return;
+                e.preventDefault();           // 防止頁面滾動
+                if (e.repeat) return;          // 避免連發
+
+                if (!remoteConnected || !gameActive) return; // 尚未連線或倒數中 / 遊戲結束
+
+                // 根據角色決定移動哪個玩家
+                if (localRole === 'host') {
+                    // 主機控制玩家1 (紅方)
+                    localMove(1);
+                } else if (localRole === 'client') {
+                    // 客戶端控制玩家2 (藍方)
+                    localMove(2);
+                }
+                // 若角色未定，忽略
+            });
+
+            // 重置按鈕 (雙方皆可重置)
+            resetBtn.addEventListener('click', () => {
+                if (!remoteConnected) return;
+                localReset();
+            });
+
+            // 初始化顯示
+            refreshDisplay();
+        })();
+    </script>
+</body>
+</html>
+```
